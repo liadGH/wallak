@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Wallak</title>
 <meta name="description" content="Your training, food and body, all in one place.">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -52,6 +52,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent }
 :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); -webkit-text-size-adjust: 100% }
 body { margin: 0; overscroll-behavior-y: none }
+html, body, button, input, select, textarea, label, a { touch-action: manipulation } /* no double-tap zoom */
 img { max-width: 100% }
 [hidden] { display: none !important }
 html, body { height: 100% }
@@ -933,6 +934,9 @@ document.addEventListener("click", async e => {
 });
 
 draw();
+// No pinch zoom (iPhone ignores user-scalable=no on its own)
+["gesturestart", "gesturechange"].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+document.addEventListener("touchmove", e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 </script>
