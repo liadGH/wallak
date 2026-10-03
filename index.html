@@ -68,7 +68,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2.5px
 /* the only part of a tab that scrolls */
 .scroll, .screen > .stack { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none }
 .scroll::-webkit-scrollbar, .screen > .stack::-webkit-scrollbar { display: none }
-.screen > .stack { margin-inline: -16px; padding: 2px 16px 24px; align-content: start }
+.screen > .stack { margin-inline: -16px; padding: 2px 16px 24px; align-content: start; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; overflow-x: hidden }
+.screen > .stack > * { min-width: 0 } /* cards never stretch wider than the screen or get squashed */
 .screen { animation: rise .3s ease both }
 @keyframes rise { from { opacity: .3; transform: translateY(8px) } to { opacity: 1; transform: none } }
 @keyframes pop { 0% { transform: scale(.9); opacity: 0 } 70% { transform: scale(1.03) } 100% { transform: none; opacity: 1 } }
@@ -138,6 +139,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2.5px
 .opt-card span { font-size: 13px; color: var(--muted) }
 .opt-card.on { border-color: var(--coral); background: var(--coral-soft) }
 .sched-body { padding-top: 4px }
+.fields { display: grid; gap: 10px }
 .fields > * { min-width: 0 }
 .pt-row { display: flex; flex-wrap: wrap; gap: 6px }
 .pt { flex: 1 0 44px; min-height: 54px; border-radius: 14px; background: var(--violet-soft); color: var(--violet-ink); font-weight: 700; font-size: 13px; display: grid; place-items: center; line-height: 1.15 }
@@ -247,7 +249,7 @@ svg.chart { width: 100%; height: auto; display: block }
 .steps b { font-weight: 700 }
 
 .modal { position: fixed; inset: 0; z-index: 30; background: rgba(20,14,30,.45); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); display: grid; align-items: end; justify-items: center }
-.modal-c { width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; overscroll-behavior: contain; background: var(--s1); border-radius: 28px 28px 0 0; padding: 22px 16px calc(20px + env(safe-area-inset-bottom, 0px)); animation: up .25s ease both }
+.modal-c { width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; background: var(--s1); border-radius: 28px 28px 0 0; padding: 22px 16px calc(20px + env(safe-area-inset-bottom, 0px)); animation: up .25s ease both }
 .mh { font-family: var(--display); font-weight: 800; font-size: 26px; margin: 0 0 12px }
 .pr-burst { text-align: center; padding: 6px 0 }
 .pr-ring { width: 120px; height: 120px; margin: 0 auto 10px; border-radius: 50%; display: grid; place-items: center; background: var(--sun); position: relative; animation: pop .5s ease both }
@@ -347,7 +349,7 @@ const blank = () => ({ v: 2, setupDone: false, obStep: 0,
   profile: { name: "", weight: "", height: "", age: "", sex: "" },
   settings: { cal: "", protein: "", lastBackup: null, schedule: { mode: "pattern", pattern: [1, 1, 1, 0], days: [1, 3, 5], anchor: null, start: 0 } },
   routines: [], workouts: [], body: [], habits: {}, food: {}, savedFoods: [], goals: [], custom: [], tipsSeen: {}, active: null });
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.5";
 const KEY = "wallak.v2";
 let S; try { S = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { S = null; }
 if (!S) S = blank();
