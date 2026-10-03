@@ -124,6 +124,19 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2.5px
 .cycle i.on { background: var(--coral); color: var(--on) }
 .cycle i.now { box-shadow: inset 0 0 0 2px var(--coral); color: var(--coral-ink) }
 .cycle i.rest { background: var(--violet-soft); color: var(--violet-ink) }
+.cycle i.rest.now { box-shadow: inset 0 0 0 2px var(--violet) }
+.opt-card { display: grid; gap: 2px; width: 100%; text-align: left; padding: 13px 14px; border-radius: 16px; background: var(--s2); border: 2px solid transparent }
+.opt-card b { font-weight: 700 }
+.opt-card span { font-size: 13px; color: var(--muted) }
+.opt-card.on { border-color: var(--coral); background: var(--coral-soft) }
+.sched-body { padding-top: 4px }
+.pt-row { display: flex; flex-wrap: wrap; gap: 6px }
+.pt { flex: 1 0 44px; min-height: 54px; border-radius: 14px; background: var(--violet-soft); color: var(--violet-ink); font-weight: 700; font-size: 13px; display: grid; place-items: center; line-height: 1.15 }
+.pt small { display: block; font-size: 10.5px; font-weight: 600; opacity: .75 }
+.pt.t { background: var(--coral); color: var(--on) }
+.wk-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px }
+.wk { height: 48px; border-radius: 12px; background: var(--s2); font-weight: 700; font-size: 13px }
+.wk.on { background: var(--coral); color: var(--on) }
 
 .list { display: grid }
 .li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line) }
@@ -319,11 +332,12 @@ const MUSCLES = ["Chest","Back","Shoulders","Biceps","Triceps","Legs","Glutes","
 /* ---------- state: starts empty, filled by the setup guide ---------- */
 const blank = () => ({ v: 2, setupDone: false, obStep: 0,
   profile: { name: "", weight: "", height: "", age: "", sex: "" },
-  settings: { cal: "", protein: "", on: 3, off: 1, lastBackup: null },
+  settings: { cal: "", protein: "", lastBackup: null, schedule: { mode: "pattern", pattern: [1, 1, 1, 0], days: [1, 3, 5], anchor: null, start: 0 } },
   routines: [], workouts: [], body: [], habits: {}, food: {}, savedFoods: [], goals: [], custom: [], tipsSeen: {}, active: null });
 const KEY = "wallak.v2";
 let S; try { S = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { S = null; }
 if (!S) S = blank();
+if (!S.settings.schedule) { const on = S.settings.on || 3, off = S.settings.off ?? 1; S.settings.schedule = { mode: "pattern", pattern: [...Array(on).fill(1), ...Array(off).fill(0)], days: [1, 3, 5], anchor: todayKey(), start: 0 }; }
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 let tab = "home", progEx = null, progMetric = "e1rm", logDay = todayKey(), discardArmed = false, draft = null, pickMode = "workout";
 
@@ -366,17 +380,69 @@ function prEvents() {
 }
 const bestE1 = ex => Math.max(0, ...exHistory(ex).map(h => h.e1rm));
 
-/* Training cycle: N days on, M off, following what was actually logged */
+/* Training schedule: a repeating pattern that waits for you when you miss a training day,
+   fixed weekdays, or no schedule at all */
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEK = [1, 2, 3, 4, 5, 6, 0];
+const PRESETS = [["3 on · 1 off", [1, 1, 1, 0]], ["2 on · 1 off", [1, 1, 0]], ["2 on · 2 off · 2 on · 1 off", [1, 1, 0, 0, 1, 1, 0]], ["Every other day", [1, 0]], ["4 on · 1 off", [1, 1, 1, 1, 0]]];
+const sched = () => S.settings.schedule;
+function patternPos() {
+  const sc = sched(), p = sc.pattern, L = p.length, t = todayKey();
+  let idx = sc.start || 0, d = sc.anchor || t, guard = 0;
+  while (d < t && guard++ < 2000) {
+    const T = trainedOn(d);
+    if (p[idx % L]) { if (T) idx++; }               // missed training day: the pattern waits
+    else if (T) { let j = idx; while (!p[j % L]) j++; idx = j + 1; } // trained on a rest day: counts as the next training day
+    else idx++;
+    d = addDays(d, 1);
+  }
+  return idx % L;
+}
+function blockOf(p, i) { let a = i, b = i; while (a > 0 && p[a - 1] === p[i]) a--; while (b < p.length - 1 && p[b + 1] === p[i]) b++; return { k: i - a + 1, n: b - a + 1 }; }
+function weekKeys() { const t = todayKey(); const dow = (parseKey(t).getDay() + 6) % 7; return Array.from({ length: 7 }, (_, i) => addDays(t, i - dow)); }
 function cycleState() {
-  const t = todayKey(), { on, off } = S.settings;
-  let run = 0; while (trainedOn(addDays(t, -(run + 1)))) run++;
-  let rest = 0; if (!run) while (rest < 30 && !trainedOn(addDays(t, -(rest + 1)))) rest++;
-  const today = trainedOn(t);
-  if (today) return { kind: "done", day: run + 1, run: run + 1 };
-  if (run >= on) return { kind: "rest", restDay: 1, run };
-  if (run > 0) return { kind: "train", day: run + 1, run };
-  if (rest > 0 && rest < off) return { kind: "rest", restDay: rest + 1, run: 0 };
-  return { kind: "train", day: 1, run: 0 };
+  const sc = sched(), t = todayKey(), doneToday = trainedOn(t);
+  if (sc.mode === "pattern" && sc.pattern.some(x => x)) {
+    const p = sc.pattern, pos = patternPos(), isT = !!p[pos], bl = blockOf(p, pos), small = p.length > 8;
+    const tiles = p.map((x, i) => {
+      const past = i < pos || (i === pos && doneToday);
+      if (x) return `<i class="${past ? "on" : i === pos ? "now" : ""}">${past ? "✓" : small ? "" : "Train"}</i>`;
+      return `<i class="rest ${i === pos && !doneToday ? "now" : ""}">${small ? "" : "Rest"}</i>`;
+    }).join("");
+    const lab = doneToday ? (isT ? `Training day ${bl.k} of ${bl.n} · done` : "Bonus workout · done")
+      : isT ? `Training day ${bl.k} of ${bl.n}` : `Rest day${bl.n > 1 ? ` ${bl.k} of ${bl.n}` : ""}`;
+    return { kind: doneToday ? "done" : isT ? "train" : "rest", lab, title: "Your cycle", sub: `${p.filter(x => x).length} training days every ${p.length}`, tiles };
+  }
+  const wk = weekKeys(); const done = wk.filter(trainedOn).length;
+  if (sc.mode === "weekdays" && sc.days.length) {
+    const plan = k => sc.days.includes(parseKey(k).getDay());
+    const tiles = wk.map(k => `<i class="${trainedOn(k) ? "on" : plan(k) ? (k === t ? "now" : "") : "rest"}">${trainedOn(k) ? "✓" : DOW[parseKey(k).getDay()]}</i>`).join("");
+    const isT = plan(t);
+    return { kind: doneToday ? "done" : isT ? "train" : "rest", lab: doneToday ? "Workout done" : isT ? `${DOW[parseKey(t).getDay()]} · training day` : "Rest day", title: "This week", sub: WEEK.filter(d => sc.days.includes(d)).map(d => DOW[d]).join(" · "), tiles };
+  }
+  const tiles = wk.map(k => `<i class="${trainedOn(k) ? "on" : k === t ? "now" : ""}">${trainedOn(k) ? "✓" : DOW[parseKey(k).getDay()]}</i>`).join("");
+  return { kind: doneToday ? "done" : "free", lab: doneToday ? "Workout done" : "Next workout", title: "This week", sub: `${done} workout${done === 1 ? "" : "s"} so far`, tiles };
+}
+function schedEditor() {
+  const sc = sched();
+  const opt = (m, t, d) => `<button class="opt-card ${sc.mode === m ? "on" : ""}" data-act="schedMode" data-v="${m}"><b>${t}</b><span>${d}</span></button>`;
+  let body = "";
+  if (sc.mode === "pattern") {
+    const pos = patternPos();
+    body = `<span class="lbl">Quick picks</span><div class="chips">${PRESETS.map(([n, pt], i) => `<button class="chip ${pt.join() === sc.pattern.join() ? "on" : ""}" data-act="schedPreset" data-v="${i}">${n}</button>`).join("")}</div>
+      <span class="lbl" style="margin-top:14px">Your pattern · tap a day to switch Train / Rest</span>
+      <div class="pt-row">${sc.pattern.map((x, i) => `<button class="pt ${x ? "t" : ""}" data-act="schedTile" data-v="${i}"><span>${x ? "Train" : "Rest"}<small>Day ${i + 1}</small></span></button>`).join("")}</div>
+      <div class="row" style="margin-top:10px"><button class="btn soft sm" data-act="schedLen" data-v="-1" ${sc.pattern.length <= 2 ? "disabled" : ""}>− Remove a day</button><button class="btn soft sm" data-act="schedLen" data-v="1" ${sc.pattern.length >= 14 ? "disabled" : ""}>+ Add a day</button></div>
+      <span class="lbl" style="margin-top:14px">Where are you in it today?</span>
+      <div class="stepper"><button data-act="schedStart" data-v="-1">‹</button><span class="grow" style="text-align:center"><span class="num" style="font-size:22px">Day ${pos + 1}</span><span class="sub"> · ${sc.pattern[pos] ? "Train" : "Rest"}</span></span><button data-act="schedStart" data-v="1">›</button></div>
+      <p class="sub" style="margin:10px 0 0">Miss a training day and the pattern waits for you.</p>`;
+  } else if (sc.mode === "weekdays") {
+    body = `<span class="lbl">Tap your training days</span><div class="wk-row">${WEEK.map(d => `<button class="wk ${sc.days.includes(d) ? "on" : ""}" data-act="schedDay" data-v="${d}">${DOW[d]}</button>`).join("")}</div>`;
+  } else {
+    body = `<p class="sub" style="margin:0">Wallak shows your next routine every day and counts your workouts each week. No rest-day messages.</p>`;
+  }
+  return `<div class="fields">${opt("pattern", "Repeating pattern", "e.g. 3 days on, 1 off, then repeat")}${opt("weekdays", "Same days every week", "e.g. Mon, Wed, Fri")}${opt("free", "No fixed schedule", "I train when I can")}
+    <div class="sched-body">${body}</div></div>`;
 }
 function dayStreak() {
   const any = k => trainedOn(k) || (S.food[k] || []).length || S.body.some(b => b.date === k) || (S.habits[k] && S.habits[k].mood);
@@ -435,7 +501,7 @@ const tip = k => S.tipsSeen[k] ? "" : `<div class="tip"><div class="grow"><b>${T
 function home() {
   const t = todayKey(); const hr = new Date().getHours();
   const greet = (hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening") + (firstName() ? `, ${esc(firstName())}` : "");
-  const nr = nextRoutine(); const cs = cycleState(); const { on, off } = S.settings;
+  const nr = nextRoutine(); const cs = cycleState();
   const food = dayFood(t); const prot = food.reduce((a, f) => a + f.p, 0), cal = food.reduce((a, f) => a + f.cal, 0);
   const bw = S.body.filter(b => b.date > addDays(t, -30)); const avgNow = avg7(t), avgThen = avg7(addDays(t, -28));
   const prs = prEvents().slice(0, 3); const streak = dayStreak();
@@ -443,15 +509,9 @@ function home() {
   const todayW = S.workouts.filter(w => w.date === t).at(-1);
   let hero;
   if (!nr) hero = `<div class="card hero"><div class="lab">Let's get you started</div><div class="big">Build your first routine</div><div class="sub">Add your workout days so Wallak knows what's next.</div><div class="row" style="margin-top:16px"><button class="btn white grow" data-act="newRoutine">Create a routine</button></div></div>`;
-  else if (cs.kind === "done") hero = `<div class="card hero done"><div class="lab">Training day ${cs.day} of ${on} · done</div><div class="big">Nice work!</div>${todayW.abs ? `<span class="pill abs">★ Abs bonus earned</span>` : ""}<div class="sub">${esc(todayW.name)} · ${todayW.mins} min · ${volTxt(wkVol(todayW))} lifted</div><div class="row" style="margin-top:16px"><button class="btn white grow" data-act="tab" data-v="log">Log food & weight</button></div></div>`;
-  else if (cs.kind === "rest") hero = `<div class="card hero rest"><div class="lab">Rest day${off > 1 ? ` ${cs.restDay} of ${off}` : ""}</div><div class="big">Recover today</div><div class="sub">Next up: ${esc(nr.name)}. Eat your protein and sleep well.</div><div class="row" style="margin-top:16px"><button class="btn white grow" data-act="start" data-v="${nr.id}">Train anyway</button></div></div>`;
-  else hero = `<div class="card hero"><div class="lab">Training day ${cs.day} of ${on}</div><div class="big">${esc(nr.name)}</div><div class="sub">${nr.items.length ? nr.items.slice(0, 3).map(i => esc(exById(i.ex).name)).join(" · ") + (nr.items.length > 3 ? ` +${nr.items.length - 3}` : "") : "No exercises yet"}</div><div class="row" style="margin-top:16px"><button class="btn white grow" data-act="start" data-v="${nr.id}">Start workout</button><button class="btn clear" data-act="tab" data-v="train">Other</button></div></div>`;
-  const cyc = Array.from({ length: on + off }, (_, i) => {
-    if (i >= on) return `<i class="rest">Rest</i>`;
-    const doneN = cs.kind === "done" ? cs.run : cs.kind === "rest" ? Math.min(on, cs.run) : cs.run;
-    const nowI = cs.kind === "train" ? cs.day - 1 : -1;
-    return `<i class="${i < doneN ? "on" : i === nowI ? "now" : ""}">${i < doneN ? "✓" : "Day " + (i + 1)}</i>`;
-  }).join("");
+  else if (cs.kind === "done") hero = `<div class="card hero done"><div class="lab">${cs.lab}</div><div class="big">Nice work!</div>${todayW.abs ? `<span class="pill abs">★ Abs bonus earned</span>` : ""}<div class="sub">${esc(todayW.name)} · ${todayW.mins} min · ${volTxt(wkVol(todayW))} lifted</div><div class="row" style="margin-top:16px"><button class="btn white grow" data-act="tab" data-v="log">Log food & weight</button></div></div>`;
+  else if (cs.kind === "rest") hero = `<div class="card hero rest"><div class="lab">${cs.lab}</div><div class="big">Recover today</div><div class="sub">Next up: ${esc(nr.name)}. Eat your protein and sleep well.</div><div class="row" style="margin-top:16px"><button class="btn white grow" data-act="start" data-v="${nr.id}">Train anyway</button></div></div>`;
+  else hero = `<div class="card hero"><div class="lab">${cs.lab}</div><div class="big">${esc(nr.name)}</div><div class="sub">${nr.items.length ? nr.items.slice(0, 3).map(i => esc(exById(i.ex).name)).join(" · ") + (nr.items.length > 3 ? ` +${nr.items.length - 3}` : "") : "No exercises yet"}</div><div class="row" style="margin-top:16px"><button class="btn white grow" data-act="start" data-v="${nr.id}">Start workout</button><button class="btn clear" data-act="tab" data-v="train">Other</button></div></div>`;
   return `<div class="screen">
     <div class="top"><div><div class="eyebrow">${longDate(t)}</div><h1 class="h1">${greet}</h1></div>
       ${streak ? `<div class="pill sun">🔥 <span class="num">${streak}</span> day${streak > 1 ? "s" : ""}</div>` : ""}</div>
@@ -459,7 +519,7 @@ function home() {
       ${tip("home")}
       ${backupDue ? `<div class="banner"><div class="grow"><b>Time for a backup.</b> Removing Wallak from your home screen deletes everything on it.</div><button class="btn sm sun" data-act="tab" data-v="more">Back up</button></div>` : ""}
       ${hero}
-      <div class="card c-coral"><div class="card-h"><span class="card-t"><span class="ico">${ICON.repeat}</span>Your cycle</span><span class="sub">${on} on · ${off} off</span></div><div class="cycle">${cyc}</div><div class="sub" style="margin-top:12px"><span class="abs-tag">★ Abs</span> ${absStreak() ? `bonus ${absStreak()} workout${absStreak() > 1 ? "s" : ""} in a row` : "Tick the abs bonus in your next workout"}</div></div>
+      <div class="card c-coral"><div class="card-h"><span class="card-t"><span class="ico">${ICON.repeat}</span>${cs.title}</span><button class="link" data-act="tab" data-v="more">${esc(cs.sub)}</button></div><div class="cycle">${cs.tiles}</div><div class="sub" style="margin-top:12px"><span class="abs-tag">★ Abs</span> ${absStreak() ? `bonus ${absStreak()} workout${absStreak() > 1 ? "s" : ""} in a row` : "Tick the abs bonus in your next workout"}</div></div>
       <div class="card c-green"><div class="card-h"><span class="card-t"><span class="ico">${ICON.food}</span>Food today</span><button class="link" data-act="tab" data-v="log">Add</button></div>
         ${S.settings.cal || S.settings.protein ? `<div class="grid2">
           <div><div class="row between"><span class="sub">Calories</span><span class="num">${cal}<span class="sub"> / ${S.settings.cal || "–"}</span></span></div><div class="bar sun" style="margin-top:7px"><i style="width:${S.settings.cal ? Math.min(100, cal / S.settings.cal * 100) : 0}%"></i></div></div>
@@ -561,9 +621,8 @@ function more() {
         <div><span class="lbl">Age</span><input class="field" id="pAge" inputmode="numeric" value="${esc(p.age)}"></div><div><span class="lbl">Sex</span><select class="field" id="pSex"><option value="">–</option><option value="m" ${p.sex === "m" ? "selected" : ""}>Male</option><option value="f" ${p.sex === "f" ? "selected" : ""}>Female</option></select></div></div></div>
       <div class="card c-green"><div class="card-h"><span class="card-t"><span class="ico">${ICON.target}</span>Daily targets</span></div>
         <div class="grid2"><div><span class="lbl">Calories</span><input class="field" id="setCal" inputmode="numeric" value="${st.cal}"></div><div><span class="lbl">Protein (g)</span><input class="field" id="setP" inputmode="numeric" value="${st.protein}"></div></div></div>
-      <div class="card c-coral"><div class="card-h"><span class="card-t"><span class="ico">${ICON.repeat}</span>Training cycle</span></div>
-        <div class="grid2"><div><span class="lbl">Days on</span><div class="stepper" style="padding:6px"><button data-act="cyc" data-k="on" data-v="-1">−</button><span class="num grow">${st.on}</span><button data-act="cyc" data-k="on" data-v="1">+</button></div></div>
-        <div><span class="lbl">Days off</span><div class="stepper" style="padding:6px"><button data-act="cyc" data-k="off" data-v="-1">−</button><span class="num grow">${st.off}</span><button data-act="cyc" data-k="off" data-v="1">+</button></div></div></div></div>
+      <div class="card c-coral"><div class="card-h"><span class="card-t"><span class="ico">${ICON.repeat}</span>Training schedule</span><span class="sub">Saves instantly</span></div>
+        ${schedEditor()}</div>
       <button class="btn violet block" data-act="saveSettings">Save changes</button>
       <div class="card c-sun"><div class="card-h"><span class="card-t"><span class="ico">${ICON.shield}</span>Backup</span><span class="sub">${st.lastBackup ? "Last: " + new Date(st.lastBackup).toLocaleDateString("en-GB") : "Never"}</span></div>
         <div class="sub" style="margin-bottom:12px">Saves a backup file. Choose <b>Save to Files</b> → iCloud Drive so it survives even if you lose your phone.</div>
@@ -586,10 +645,7 @@ const OB = [
   { id: "targets", art: ["green", "food"], title: "Daily targets", lead: "Type your own calorie and protein goals. Not sure? Tap Suggest for a starting point from your details.", body: () => `<div class="fields">
       <div class="grid2"><div><span class="lbl">Calories</span><input class="field" id="obCal" inputmode="numeric" placeholder="e.g. 2600" value="${esc(S.settings.cal)}"></div><div><span class="lbl">Protein (g)</span><input class="field" id="obP" inputmode="numeric" placeholder="e.g. 160" value="${esc(S.settings.protein)}"></div></div>
       <button class="btn soft" data-act="obSuggest">✨ Suggest for me</button><div class="sub" id="obSugNote"></div></div>` },
-  { id: "cycle", art: ["coral", "repeat"], title: "How do you train?", lead: "Set your rhythm. If you miss a day, the cycle shifts with you.", body: () => `<div class="fields">
-      <div><span class="lbl">Training days in a row</span><div class="stepper"><button data-act="obCyc" data-k="on" data-v="-1">−</button><span class="num grow">${S.settings.on}</span><button data-act="obCyc" data-k="on" data-v="1">+</button></div></div>
-      <div><span class="lbl">Then rest days</span><div class="stepper"><button data-act="obCyc" data-k="off" data-v="-1">−</button><span class="num grow">${S.settings.off}</span><button data-act="obCyc" data-k="off" data-v="1">+</button></div></div>
-      <div class="cycle">${Array.from({ length: S.settings.on + S.settings.off }, (_, i) => i < S.settings.on ? `<i class="on">Train</i>` : `<i class="rest">Rest</i>`).join("")}</div></div>` },
+  { id: "cycle", art: ["coral", "repeat"], title: "How do you train?", lead: "Pick what fits you. Wallak uses it to tell you whether today is a training day or a rest day.", body: () => schedEditor() },
   { id: "routines", art: ["coral", "train"], title: "Your workout days", lead: "Create a routine for each workout day: Push, Pull, Legs, or whatever you do. You can also skip this and do it later.", body: () => `<div class="fields">
       ${S.routines.map(r => `<div class="rt-ex"><div><div style="font-weight:700">${esc(r.name)}</div><div class="sub">${r.items.length} exercise${r.items.length === 1 ? "" : "s"}</div></div><button class="btn soft sm" data-act="editRoutine" data-v="${r.id}">Edit</button></div>`).join("")}
       <button class="btn coral" data-act="newRoutine">+ ${S.routines.length ? "Add another routine" : "Create a routine"}</button></div>`, next: () => S.routines.length ? "Next" : "Skip for now" },
@@ -784,7 +840,12 @@ document.addEventListener("click", async e => {
     case "obNext": obSave(); if (S.obStep < OB.length - 1) S.obStep++; else { S.setupDone = true; if (parseFloat(S.profile.weight) > 20) { S.body = S.body.filter(x => x.date !== todayKey()); S.body.push({ date: todayKey(), w: parseFloat(S.profile.weight) }); } tab = "home"; } save(); draw(); break;
     case "obBack": obSave(); S.obStep = Math.max(0, S.obStep - 1); save(); draw(); break;
     case "obSex": obSave(); S.profile.sex = v; save(); draw(); break;
-    case "obCyc": S.settings[b.dataset.k] = Math.min(b.dataset.k === "on" ? 7 : 4, Math.max(b.dataset.k === "on" ? 1 : 0, S.settings[b.dataset.k] + +v)); save(); draw(); break;
+    case "schedMode": sched().mode = v; if (!sched().anchor) sched().anchor = todayKey(); save(); draw(); break;
+    case "schedPreset": Object.assign(sched(), { pattern: [...PRESETS[+v][1]], start: 0, anchor: todayKey() }); save(); draw(); break;
+    case "schedTile": { const sc = sched(); sc.start = patternPos(); sc.anchor = todayKey(); sc.pattern[+v] = sc.pattern[+v] ? 0 : 1; save(); draw(); break; }
+    case "schedLen": { const sc = sched(); sc.start = patternPos(); sc.anchor = todayKey(); if (+v > 0) sc.pattern.push(0); else sc.pattern.pop(); sc.start = Math.min(sc.start, sc.pattern.length - 1); save(); draw(); break; }
+    case "schedStart": { const sc = sched(); const L = sc.pattern.length; sc.start = (patternPos() + +v + L) % L; sc.anchor = todayKey(); save(); draw(); break; }
+    case "schedDay": { const sc = sched(); const d = +v; sc.days = sc.days.includes(d) ? sc.days.filter(x => x !== d) : [...sc.days, d]; save(); draw(); break; }
     case "obSuggest": { obSave(); const p = S.profile; const w = parseFloat(p.weight), h = parseFloat(p.height), a = parseFloat(p.age);
       if (!(w && h && a && p.sex)) { $("#obSugNote").textContent = "Go back and fill in weight, height, age and sex first."; break; }
       const bmr = 10 * w + 6.25 * h - 5 * a + (p.sex === "m" ? 5 : -161); const cal = Math.round((bmr * 1.55 + 200) / 50) * 50; const pr = Math.round(w * 2 / 5) * 5;
@@ -825,7 +886,6 @@ document.addEventListener("click", async e => {
     case "rmFood": S.food[logDay] = dayFood(logDay).filter(f => f.id !== v); save(); draw(); break;
     case "mood": { const h = dayHabits(logDay); h.mood = h.mood === +v ? null : +v; save(); draw(); break; }
     /* settings */
-    case "cyc": S.settings[b.dataset.k] = Math.min(b.dataset.k === "on" ? 7 : 4, Math.max(b.dataset.k === "on" ? 1 : 0, S.settings[b.dataset.k] + +v)); save(); draw(); break;
     case "saveSettings": Object.assign(S.profile, { name: $("#pName").value.trim(), height: $("#pHeight").value.trim(), age: $("#pAge").value.trim(), sex: $("#pSex").value });
       S.settings.cal = parseInt($("#setCal").value) || ""; S.settings.protein = parseInt($("#setP").value) || ""; save(); draw(); toast("Saved"); break;
     case "backup": {
