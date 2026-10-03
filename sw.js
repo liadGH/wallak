@@ -1,7 +1,7 @@
 // Offline support for Wallak.
 // The app page is fetched fresh whenever there's a connection (so updates show up on next open)
 // and served from the cache when offline. Icons and fonts are cached as they're used.
-const CACHE = "wallak-v1";
+const CACHE = "wallak-v2";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -20,7 +20,7 @@ self.addEventListener("fetch", e => {
 
   // App page: network first, cache as fallback
   if (req.mode === "navigate") {
-    e.respondWith(fetch(req)
+    e.respondWith(fetch(req, { cache: "no-cache" })  // always ask GitHub for the newest page
       .then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put("index.html", copy)); return res; })
       .catch(() => caches.match("index.html")));
     return;

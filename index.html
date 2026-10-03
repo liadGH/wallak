@@ -335,6 +335,7 @@ const blank = () => ({ v: 2, setupDone: false, obStep: 0,
   profile: { name: "", weight: "", height: "", age: "", sex: "" },
   settings: { cal: "", protein: "", lastBackup: null, schedule: { mode: "pattern", pattern: [1, 1, 1, 0], days: [1, 3, 5], anchor: null, start: 0 } },
   routines: [], workouts: [], body: [], habits: {}, food: {}, savedFoods: [], goals: [], custom: [], tipsSeen: {}, active: null });
+const APP_VERSION = "1.3";
 const KEY = "wallak.v2";
 let S; try { S = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { S = null; }
 if (!S) S = blank();
@@ -630,7 +631,7 @@ function more() {
         <div class="row"><button class="btn sun grow" data-act="backup">Back up now</button><button class="btn soft grow" data-act="restoreOpen">Restore</button></div></div>
       <div class="card c-violet"><div class="card-h"><span class="card-t"><span class="ico">${ICON.train}</span>My exercises</span><button class="link" data-act="customFromSettings">+ Add</button></div>
         <div class="list">${S.custom.filter(e => !e.hidden).map(e => `<div class="li"><span class="grow"><div class="t">${esc(e.name)}</div><div class="sub">${esc(e.muscle)}${e.time ? " · timed" : ""}</div></span><button class="sub" data-act="cxHide" data-v="${e.id}" aria-label="Remove">✕</button></div>`).join("") || `<div class="empty">Exercises you create show up here.</div>`}</div></div>
-      <div class="card"><div class="card-h"><span class="card-t">Start over</span></div>
+      <div class="card"><div class="card-h"><span class="card-t">Start over</span><span class="sub">Version ${APP_VERSION}</span></div>
         <div class="row"><button class="btn soft grow" data-act="replay">Replay setup</button><button class="btn danger grow" data-act="wipeAsk">Erase everything</button></div></div>
     </div></div>`;
 }
@@ -937,7 +938,15 @@ draw();
 // No pinch zoom (iPhone ignores user-scalable=no on its own)
 ["gesturestart", "gesturechange"].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener("touchmove", e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+// Updates: check for a new version whenever the app is opened or brought back, and switch to it right away
+if ("serviceWorker" in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded && !S.active) { reloaded = true; location.reload(); } });
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => {
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+  }).catch(() => {}));
+}
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 </script>
 </body>
