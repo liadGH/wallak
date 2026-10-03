@@ -50,18 +50,25 @@
   --on: #ffffff; --shadow: none; color-scheme: dark }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent }
-:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); -webkit-text-size-adjust: 100% }
+:root { -webkit-text-size-adjust: 100%; --tabh: calc(70px + env(safe-area-inset-bottom, 0px)) }
 body { margin: 0; overscroll-behavior-y: none }
 html, body, button, input, select, textarea, label, a { touch-action: manipulation } /* no double-tap zoom */
 img { max-width: 100% }
 [hidden] { display: none !important }
-html, body { height: 100% }
+html, body { height: 100%; overflow: hidden }
+body { position: fixed; inset: 0 }
 body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.45 }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none }
 input, select, textarea { font: inherit; color: var(--fg); font-size: 16px } /* 16px+ stops iPhone auto-zoom on focus */
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2.5px solid var(--violet); outline-offset: 2px }
 
-.app { max-width: 460px; margin: 0 auto; padding-inline: 16px; padding-block: 18px calc(96px + env(safe-area-inset-bottom, 0px)) }
+.app { position: absolute; top: 0; left: 0; right: 0; bottom: var(--tabh); max-width: 460px; margin: 0 auto; padding-inline: 16px; padding-block: calc(16px + env(safe-area-inset-top, 0px)) 0; display: flex; flex-direction: column }
+.screen { flex: 1; min-height: 0; display: flex; flex-direction: column }
+.screen > .top { flex: none }
+/* the only part of a tab that scrolls */
+.scroll, .screen > .stack { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none }
+.scroll::-webkit-scrollbar, .screen > .stack::-webkit-scrollbar { display: none }
+.screen > .stack { margin-inline: -16px; padding: 2px 16px 24px; align-content: start }
 .screen { animation: rise .3s ease both }
 @keyframes rise { from { opacity: .3; transform: translateY(8px) } to { opacity: 1; transform: none } }
 @keyframes pop { 0% { transform: scale(.9); opacity: 0 } 70% { transform: scale(1.03) } 100% { transform: none; opacity: 1 } }
@@ -131,6 +138,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2.5px
 .opt-card span { font-size: 13px; color: var(--muted) }
 .opt-card.on { border-color: var(--coral); background: var(--coral-soft) }
 .sched-body { padding-top: 4px }
+.fields > * { min-width: 0 }
 .pt-row { display: flex; flex-wrap: wrap; gap: 6px }
 .pt { flex: 1 0 44px; min-height: 54px; border-radius: 14px; background: var(--violet-soft); color: var(--violet-ink); font-weight: 700; font-size: 13px; display: grid; place-items: center; line-height: 1.15 }
 .pt small { display: block; font-size: 10.5px; font-weight: 600; opacity: .75 }
@@ -191,10 +199,12 @@ svg.chart { width: 100%; height: auto; display: block }
 .tab.on[data-v="home"], .tab.on[data-v="train"] { color: var(--coral) }
 .tab.on[data-v="prog"] { color: var(--violet) } .tab.on[data-v="log"] { color: var(--green) } .tab.on[data-v="more"] { color: var(--sun-ink) }
 
-.sheet { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto; animation: up .3s ease both }
+.sheet { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow: hidden; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); animation: up .3s ease both }
 @keyframes up { from { transform: translateY(30px); opacity: 0 } to { transform: none; opacity: 1 } }
-.sheet-in { max-width: 460px; margin: 0 auto; padding-inline: 16px; padding-block: calc(14px + env(safe-area-inset-top, 0px)) calc(110px + env(safe-area-inset-bottom, 0px)) }
-.sheet-top { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 10px 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px }
+.sheet-head, .sheet-in { width: 100%; max-width: 460px; margin: 0 auto; padding-inline: 16px }
+.sheet-head { flex: none; padding-top: 14px }
+.sheet-in { padding-bottom: 20px }
+.sheet-top { padding: 4px 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px }
 .timer { font-family: var(--display); font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--coral) }
 .ex { background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 22px; padding: 14px; margin-top: 12px }
 .ex-name { font-weight: 700; font-size: 17px }
@@ -211,11 +221,13 @@ svg.chart { width: 100%; height: auto; display: block }
 .set.done .ok { background: var(--green) }
 .set .ok svg { width: 16px; height: 16px; stroke: var(--dim) }
 .set.done .ok svg { stroke: #fff }
-.foot { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, var(--bg) 30%) }
+.foot { flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-top: 1px solid var(--line) }
 .foot .in { max-width: 460px; margin: 0 auto; display: flex; gap: 10px }
 
 /* Setup */
-.ob-prog { display: flex; gap: 4px; margin-bottom: 26px }
+.ob-prog { display: flex; gap: 4px; margin-bottom: 18px }
+.ob .sheet-head { padding-bottom: 6px }
+.ob .lead { margin-bottom: 8px !important }
 .ob-prog i { flex: 1; height: 5px; border-radius: 3px; background: var(--s3) }
 .ob-prog i.on { background: var(--coral) }
 .ob-art { width: 76px; height: 76px; border-radius: 26px; display: grid; place-items: center; margin-bottom: 18px; animation: pop .45s ease both }
@@ -235,7 +247,7 @@ svg.chart { width: 100%; height: auto; display: block }
 .steps b { font-weight: 700 }
 
 .modal { position: fixed; inset: 0; z-index: 30; background: rgba(20,14,30,.45); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); display: grid; align-items: end; justify-items: center }
-.modal-c { width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; background: var(--s1); border-radius: 28px 28px 0 0; padding: 22px 16px calc(20px + env(safe-area-inset-bottom, 0px)); animation: up .25s ease both }
+.modal-c { width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; overscroll-behavior: contain; background: var(--s1); border-radius: 28px 28px 0 0; padding: 22px 16px calc(20px + env(safe-area-inset-bottom, 0px)); animation: up .25s ease both }
 .mh { font-family: var(--display); font-weight: 800; font-size: 26px; margin: 0 0 12px }
 .pr-burst { text-align: center; padding: 6px 0 }
 .pr-ring { width: 120px; height: 120px; margin: 0 auto 10px; border-radius: 50%; display: grid; place-items: center; background: var(--sun); position: relative; animation: pop .5s ease both }
@@ -335,7 +347,7 @@ const blank = () => ({ v: 2, setupDone: false, obStep: 0,
   profile: { name: "", weight: "", height: "", age: "", sex: "" },
   settings: { cal: "", protein: "", lastBackup: null, schedule: { mode: "pattern", pattern: [1, 1, 1, 0], days: [1, 3, 5], anchor: null, start: 0 } },
   routines: [], workouts: [], body: [], habits: {}, food: {}, savedFoods: [], goals: [], custom: [], tipsSeen: {}, active: null });
-const APP_VERSION = "1.3";
+const APP_VERSION = "1.4";
 const KEY = "wallak.v2";
 let S; try { S = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { S = null; }
 if (!S) S = blank();
@@ -674,11 +686,11 @@ function obSave() {
 }
 function onboarding() {
   const st = OB[S.obStep]; const val = f => typeof f === "function" ? f() : f;
-  return `<div class="sheet ob"><div class="sheet-in">
+  return `<div class="sheet ob"><div class="sheet-head">
     <div class="ob-prog">${OB.map((_, i) => `<i class="${i <= S.obStep ? "on" : ""}"></i>`).join("")}</div>
     <div class="ob-art" style="background:var(--${st.art[0]}-soft);color:var(--${st.art[0] === "sun" ? "sun-ink" : st.art[0]})">${ICON[st.art[1]]}</div>
-    <h2>${val(st.title)}</h2><p class="lead">${st.lead}</p>${st.body()}
-  </div><div class="foot"><div class="in">${S.obStep > 0 && S.obStep < OB.length - 1 ? `<button class="btn soft" data-act="obBack">Back</button>` : ""}<button class="btn coral grow" data-act="obNext">${val(st.next) || "Next"}</button></div></div></div>`;
+    <h2>${val(st.title)}</h2><p class="lead">${st.lead}</p>
+  </div><div class="scroll"><div class="sheet-in" style="padding-top:12px">${st.body()}</div></div><div class="foot"><div class="in">${S.obStep > 0 && S.obStep < OB.length - 1 ? `<button class="btn soft" data-act="obBack">Back</button>` : ""}<button class="btn coral grow" data-act="obNext">${val(st.next) || "Next"}</button></div></div></div>`;
 }
 
 /* ---------- routine editor ---------- */
@@ -702,9 +714,8 @@ function startWorkout(rid) {
 }
 function sheet() {
   const a = S.active;
-  return `<div class="sheet live"><div class="sheet-in">
-    <div class="sheet-top"><div><div class="eyebrow">${esc(a.name)}</div><div class="timer" id="timer">0:00</div></div>
-      <button class="btn ${discardArmed ? "danger" : "soft"} sm" data-act="discard">${discardArmed ? "Tap again to discard" : "Discard"}</button></div>
+  return `<div class="sheet live"><div class="sheet-head"><div class="sheet-top"><div><div class="eyebrow">${esc(a.name)}</div><div class="timer" id="timer">0:00</div></div>
+      <button class="btn ${discardArmed ? "danger" : "soft"} sm" data-act="discard">${discardArmed ? "Tap again to discard" : "Discard"}</button></div></div><div class="scroll"><div class="sheet-in">
     ${a.exercises.length ? "" : `<div class="card empty-card"><div class="big-ico" style="background:var(--coral-soft);color:var(--coral)">${ICON.train}</div><p class="sub">Add your first exercise to begin.</p></div>`}
     ${a.exercises.map((e, ei) => { const sg = suggest(e.ex, e.lo, e.hi); const last = lastFor(e.ex) || [];
       return `<div class="ex"><div class="row between"><div class="ex-name">${esc(exById(e.ex).name)}</div><span class="sub">${e.lo}–${e.hi} ${unitR(e.ex)}</span></div>
@@ -723,7 +734,7 @@ function sheet() {
         <div>${ab.length ? "Tick it once you've done it." : "Trained abs today? Choose the exercise, then tick it when it's done."}</div>
         ${ab.map((x, i) => `<div class="abs-row"><button class="row grow" data-act="absTick" data-v="${i}" style="text-align:left"><span class="check ${x.done ? "on" : ""}"></span><span class="grow">${esc(exById(x.ex).name)}</span></button><button class="sub" data-act="absRm" data-v="${i}" aria-label="Remove">✕</button></div>`).join("")}
         <button class="chip" style="margin-top:10px" data-act="absPick">+ ${ab.length ? "Another ab exercise" : "Choose ab exercise"}</button></div></div>`; })()}
-  </div><div class="foot"><div class="in"><button class="btn coral grow" data-act="finish">Finish workout</button></div></div></div>`;
+  </div></div><div class="foot"><div class="in"><button class="btn coral grow" data-act="finish">Finish workout</button></div></div></div>`;
 }
 let tick = null;
 function runTimer() {
@@ -806,19 +817,25 @@ function goalForm(ex) {
 
 /* ---------- draw ---------- */
 const SCREENS = { home, train, prog: progress, log, more };
+let lastTab = null, lastObStep = null;
+const scrollTopOf = sel => { const el = document.querySelector(sel); return el ? el.scrollTop : 0; };
 function draw() {
   document.querySelectorAll(".sheet").forEach(n => n.dataset.stale = "1");
   if (!S.setupDone) {
     $("#app").innerHTML = ""; $("#tabs").innerHTML = "";
-    const old = document.querySelector(".sheet.ob"); document.body.insertAdjacentHTML("beforeend", onboarding());
-    const fresh = document.querySelectorAll(".sheet.ob"); if (old) { old.remove(); fresh[fresh.length - 1].style.animation = "none"; }
+    const old = document.querySelector(".sheet.ob"); const y = old && lastObStep === S.obStep ? scrollTopOf(".sheet.ob .scroll") : 0;
+    document.body.insertAdjacentHTML("beforeend", onboarding());
+    const fresh = document.querySelectorAll(".sheet.ob"); const nw = fresh[fresh.length - 1]; if (old) { old.remove(); nw.style.animation = "none"; }
+    nw.querySelector(".scroll").scrollTop = y; lastObStep = S.obStep;
     document.querySelectorAll(".sheet[data-stale]").forEach(n => n.remove());
     return;
   }
+  const ty = lastTab === tab ? scrollTopOf("#app .stack") : 0;
   $("#app").innerHTML = SCREENS[tab]();
+  const st = $("#app .stack"); if (st) st.scrollTop = ty; lastTab = tab;
   $("#tabs").innerHTML = `<div class="tabs-in">${[["home", "Home"], ["train", "Train"], ["prog", "Progress"], ["log", "Log"], ["more", "Settings"]].map(([k, n]) => `<button class="tab ${tab === k ? "on" : ""}" data-act="tab" data-v="${k}">${ICON[k]}${n}</button>`).join("")}</div>`;
   const old = document.querySelector(".sheet.live");
-  if (S.active) { const y = old ? old.scrollTop : 0; document.body.insertAdjacentHTML("beforeend", sheet()); const nw = [...document.querySelectorAll(".sheet.live")].at(-1); if (old) { old.remove(); nw.style.animation = "none"; } nw.scrollTop = y; runTimer(); }
+  if (S.active) { const y = old ? scrollTopOf(".sheet.live .scroll") : 0; document.body.insertAdjacentHTML("beforeend", sheet()); const nw = [...document.querySelectorAll(".sheet.live")].at(-1); if (old) { old.remove(); nw.style.animation = "none"; } nw.querySelector(".scroll").scrollTop = y; runTimer(); }
   document.querySelectorAll(".sheet[data-stale]").forEach(n => n.remove());
 }
 
@@ -853,7 +870,7 @@ document.addEventListener("click", async e => {
       const bmr = 10 * w + 6.25 * h - 5 * a + (p.sex === "m" ? 5 : -161); const cal = Math.round((bmr * 1.55 + 200) / 50) * 50; const pr = Math.round(w * 2 / 5) * 5;
       $("#obCal").value = cal; $("#obP").value = pr; $("#obSugNote").textContent = "Based on training most days and building muscle while staying lean (+200 kcal). Edit them if you like."; break; }
     /* navigation */
-    case "tab": tab = v; draw(); window.scrollTo(0, 0); break;
+    case "tab": tab = v; draw(); break;
     case "tipOk": S.tipsSeen[v] = true; save(); draw(); break;
     case "start": startWorkout(v || null); break;
     case "progEx": progEx = v; draw(); break;
